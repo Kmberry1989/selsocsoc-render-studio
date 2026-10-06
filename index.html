@@ -101,7 +101,59 @@
     function makeFaceMaskTexture(){const c=document.createElement('canvas');c.width=256;c.height=256;const ctx=c.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,256,256);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(128,128,127,0,Math.PI*2);ctx.fill();const texture=new THREE.CanvasTexture(c);texture.flipY=true;texture.needsUpdate=true;return texture}
     function makeOverlayMaterial(){return new THREE.MeshStandardMaterial({transparent:true,alphaTest:.02,depthWrite:false,premultipliedAlpha:false,roughness:.9,metalness:0,side:THREE.FrontSide})}function wrapAngle(a){while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a}
     function median(values){values.sort((a,b)=>a-b);const middle=Math.floor(values.length/2);return values.length%2?values[middle]:(values[middle-1]+values[middle])/2}
-    function analyzeOutfitPanels(id,texture,insets){if(outfitUvCache.has(id))return outfitUvCache.get(id);const image=texture.image,canvas=document.createElement('canvas');canvas.width=image.naturalWidth||image.videoWidth||image.width;canvas.height=image.naturalHeight||image.videoHeight||image.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,canvas.width,canvas.height);const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data,panels=insets.map(inset=>{const x0=Math.max(0,Math.floor(inset.uMin*canvas.width)),x1=Math.min(canvas.width-1,Math.ceil(inset.uMax*canvas.width)-1),y0=Math.max(0,Math.floor((1-inset.vMax)*canvas.height)),y1=Math.min(canvas.height-1,Math.ceil((1-inset.vMin)*canvas.height)-1),border=[[],[],[],[]];function collect(x,y){const n=(y*canvas.width+x)*4;border[0].push(pixels[n]);border[1].push(pixels[n+1]);border[2].push(pixels[n+2]);border[3].push(pixels[n+3])}for(let x=x0;x<=x1;x++){collect(x,y0);if(y1!==y0)collect(x,y1)}for(let y=y0+1;y<y1;y++){collect(x0,y);if(x1!==x0)collect(x1,y)}const background=border.map(median);let bx0=x1,by0=y1,bx1=x0,by1=y0,found=false;for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const n=(y*canvas.width+x)*4;if(Math.abs(pixels[n]-background[0])>28||Math.abs(pixels[n+1]-background[1])>28||Math.abs(pixels[n+2]-background[2])>28||Math.abs(pixels[n+3]-background[3])>28){found=true;bx0=Math.min(bx0,x);by0=Math.min(by0,y);bx1=Math.max(bx1,x);by1=Math.max(by1,y)}}const regionArea=(x1-x0+1)*(y1-y0+1),boxArea=found?(bx1-bx0+1)*(by1-by0+1):0;if(boxArea<regionArea*.12){bx0=x0;by0=y0;bx1=x1;by1=y1}else{const padX=Math.max(1,Math.ceil((bx1-bx0+1)*.02)),padY=Math.max(1,Math.ceil((by1-by0+1)*.02));bx0=Math.max(x0,bx0-padX);bx1=Math.min(x1,bx1+padX);by0=Math.max(y0,by0-padY);by1=Math.min(y1,by1+padY)}const corners=[[x0,y0],[x1,y0],[x0,y1],[x1,y1]];let corner=corners[0],cornerDistance=Infinity;corners.forEach(([x,y])=>{const n=(y*canvas.width+x)*4,d=Math.abs(pixels[n]-background[0])+Math.abs(pixels[n+1]-background[1])+Math.abs(pixels[n+2]-background[2])+Math.abs(pixels[n+3]-background[3]);if(d<cornerDistance){cornerDistance=d;corner=[x,y]}});return {uMin:bx0/canvas.width,uMax:(bx1+1)/canvas.width,vMin:1-(by1+1)/canvas.height,vMax:1-by0/canvas.height,center:inset.center,backgroundUv:{u:(corner[0]+.5)/canvas.width,v:1-(corner[1]+.5)/canvas.height}}});const result={panels,backgroundUv:panels[0].backgroundUv};outfitUvCache.set(id,result);return result}
+    function analyzeOutfitPanels(id,texture,insets){
+      if(outfitUvCache.has(id))return outfitUvCache.get(id);
+      const image=texture.image,canvas=document.createElement('canvas');
+      canvas.width=image.naturalWidth||image.videoWidth||image.width;
+      canvas.height=image.naturalHeight||image.videoHeight||image.height;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});
+      ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data,panels=insets.map(inset=>{
+        const x0=Math.max(0,Math.floor(inset.uMin*canvas.width)),x1=Math.min(canvas.width-1,Math.ceil(inset.uMax*canvas.width)-1),y0=Math.max(0,Math.floor((1-inset.vMax)*canvas.height)),y1=Math.min(canvas.height-1,Math.ceil((1-inset.vMin)*canvas.height)-1),panelWidth=x1-x0+1,panelHeight=y1-y0+1,regionArea=panelWidth*panelHeight,border=[[],[],[],[]];
+        function collect(x,y){const n=(y*canvas.width+x)*4;border[0].push(pixels[n]);border[1].push(pixels[n+1]);border[2].push(pixels[n+2]);border[3].push(pixels[n+3])}
+        for(let x=x0;x<=x1;x++){collect(x,y0);if(y1!==y0)collect(x,y1)}
+        for(let y=y0+1;y<y1;y++){collect(x0,y);if(x1!==x0)collect(x1,y)}
+        const background=border.map(median),mask=new Uint8Array(regionArea);
+        for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+          const n=(y*canvas.width+x)*4,local=(y-y0)*panelWidth+(x-x0);
+          if(Math.abs(pixels[n]-background[0])>28||Math.abs(pixels[n+1]-background[1])>28||Math.abs(pixels[n+2]-background[2])>28||Math.abs(pixels[n+3]-background[3])>28)mask[local]=1;
+        }
+        const components=[],queue=new Int32Array(regionArea);
+        for(let local=0;local<regionArea;local++){
+          if(mask[local]!==1)continue;
+          let head=0,tail=0,area=0,cx0=x1,cy0=y1,cx1=x0,cy1=y0;
+          queue[tail++]=local;
+          mask[local]=2;
+          while(head<tail){
+            const current=queue[head++],lx=current%panelWidth,ly=Math.floor(current/panelWidth),x=x0+lx,y=y0+ly;
+            area++;cx0=Math.min(cx0,x);cy0=Math.min(cy0,y);cx1=Math.max(cx1,x);cy1=Math.max(cy1,y);
+            if(lx>0&&mask[current-1]===1){mask[current-1]=2;queue[tail++]=current-1}
+            if(lx+1<panelWidth&&mask[current+1]===1){mask[current+1]=2;queue[tail++]=current+1}
+            if(ly>0&&mask[current-panelWidth]===1){mask[current-panelWidth]=2;queue[tail++]=current-panelWidth}
+            if(ly+1<panelHeight&&mask[current+panelWidth]===1){mask[current+panelWidth]=2;queue[tail++]=current+panelWidth}
+          }
+          components.push({area,x0:cx0,y0:cy0,x1:cx1,y1:cy1});
+        }
+        let bx0=x1,by0=y1,bx1=x0,by1=y0,found=false;
+        if(components.length){
+          let largest=components[0];
+          for(let i=1;i<components.length;i++)if(components[i].area>largest.area)largest=components[i];
+          const minimumArea=largest.area*.4;
+          components.forEach(component=>{if(component===largest||component.area>=minimumArea){found=true;bx0=Math.min(bx0,component.x0);by0=Math.min(by0,component.y0);bx1=Math.max(bx1,component.x1);by1=Math.max(by1,component.y1)}});
+        }
+        const boxArea=found?(bx1-bx0+1)*(by1-by0+1):0;
+        if(boxArea<regionArea*.12){bx0=x0;by0=y0;bx1=x1;by1=y1}else{
+          const padX=Math.max(1,Math.ceil((bx1-bx0+1)*.02)),padY=Math.max(1,Math.ceil((by1-by0+1)*.02));
+          bx0=Math.max(x0,bx0-padX);bx1=Math.min(x1,bx1+padX);by0=Math.max(y0,by0-padY);by1=Math.min(y1,by1+padY);
+        }
+        const corners=[[x0,y0],[x1,y0],[x0,y1],[x1,y1]];let corner=corners[0],cornerDistance=Infinity;
+        corners.forEach(([x,y])=>{const n=(y*canvas.width+x)*4,d=Math.abs(pixels[n]-background[0])+Math.abs(pixels[n+1]-background[1])+Math.abs(pixels[n+2]-background[2])+Math.abs(pixels[n+3]-background[3]);if(d<cornerDistance){cornerDistance=d;corner=[x,y]}});
+        return {uMin:bx0/canvas.width,uMax:(bx1+1)/canvas.width,vMin:1-(by1+1)/canvas.height,vMax:1-by0/canvas.height,center:inset.center,backgroundUv:{u:(corner[0]+.5)/canvas.width,v:1-(corner[1]+.5)/canvas.height}};
+      });
+      const result={panels,backgroundUv:panels[0].backgroundUv};
+      outfitUvCache.set(id,result);
+      return result;
+    }
     function makeOutfitGeometry(source,analysis){const geo=source.index?source.toNonIndexed():source.clone(),pos=geo.getAttribute('position'),uv=new Float32Array(pos.count*2);let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;for(let i=0;i<pos.count;i++){minX=Math.min(minX,pos.getX(i));maxX=Math.max(maxX,pos.getX(i));minY=Math.min(minY,pos.getY(i));maxY=Math.max(maxY,pos.getY(i));minZ=Math.min(minZ,pos.getZ(i));maxZ=Math.max(maxZ,pos.getZ(i))}const width=Math.max(.0001,maxX-minX),height=Math.max(.0001,maxY-minY),depth=Math.max(.0001,maxZ-minZ),A=new THREE.Vector3(),B=new THREE.Vector3(),C=new THREE.Vector3(),AB=new THREE.Vector3(),AC=new THREE.Vector3(),N=new THREE.Vector3(),flat=analysis.backgroundUv;for(let i=0;i<pos.count;i+=3){A.fromBufferAttribute(pos,i);B.fromBufferAttribute(pos,i+1);C.fromBufferAttribute(pos,i+2);AB.subVectors(B,A);AC.subVectors(C,A);N.crossVectors(AB,AC).normalize();if(Math.abs(N.y)>.55){for(let j=0;j<3;j++){uv[(i+j)*2]=flat.u;uv[(i+j)*2+1]=flat.v}continue}const sector=((Math.round(Math.atan2(N.x,N.z)/(Math.PI/2))%4)+4)%4,panel=analysis.panels[sector];for(let j=0;j<3;j++){const idx=i+j,x=pos.getX(idx),z=pos.getZ(idx),local=sector===0?(x-minX)/width:sector===1?(maxZ-z)/depth:sector===2?(maxX-x)/width:(z-minZ)/depth,vertical=(pos.getY(idx)-minY)/height;uv[idx*2]=panel.uMin+local*(panel.uMax-panel.uMin);uv[idx*2+1]=panel.vMin+vertical*(panel.vMax-panel.vMin)}}geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));geo.computeVertexNormals();return geo}
     function makeAtlasGeometry(source,analysis){return makeOutfitGeometry(source,analysis||{panels:playerPanelInsets,backgroundUv:{u:playerPanelInsets[0].uMin,v:playerPanelInsets[0].vMin}})}
     function makeNpcAtlasGeometry(source,analysis){return makeOutfitGeometry(source,analysis||{panels:npcPanelInsets,backgroundUv:{u:npcPanelInsets[0].uMin,v:npcPanelInsets[0].vMin}})}
