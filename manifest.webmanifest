@@ -1,0 +1,24 @@
+{
+  "name": "Render Studio \u2014 Selfie Social Society",
+  "short_name": "Renders",
+  "description": "Render character portraits and turnarounds for Selfie Social Society.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#c98f69",
+  "background_color": "#c98f69",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "editor": "render-studio",
+  "name": "Render Studio",
+  "shares": [
+    {
+      "type": "portrait-png",
+      "format": "png",
+      "location": "exportable from app",
+      "note": "Rendered NPC/player portraits"
+    }
+  ],
+  "consumes": [
+    "npc-faces",
+    "npc-outfits"
+  ],
+  "npcManifest": "https://raw.githubusercontent.com/Kmberry1989/selsocsoc/main/assets/npc/manifest.json"
+}
